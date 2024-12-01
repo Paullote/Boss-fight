@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo 2D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            background-color: #f4f4f4;
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let player, enemy, bullets, enemyBullets, gameInterval, enemyShootInterval;
+        let gameMode, playerLives, enemyHealth, enemyShootCooldown;
+        let keys = {};
+
+        // Função para iniciar o menu
+        function showMenu() {
+            ctx.fillStyle = "black";
+            ctx.font = "40px Arial";
+            ctx.fillText("Selecione o Modo de Jogo:", canvas.width / 2 - 150, canvas.height / 2 - 60);
+
+            ctx.font = "30px Arial";
+            ctx.fillText("1. Fácil", canvas.width / 2 - 50, canvas.height / 2);
+            ctx.fillText("2. Médio", canvas.width / 2 - 50, canvas.height / 2 + 40);
+            ctx.fillText("3. Difícil", canvas.width / 2 - 50, canvas.height / 2 + 80);
+            ctx.fillText("4. Impossível", canvas.width / 2 - 50, canvas.height / 2 + 120);
+            ctx.fillText("Pressione 1, 2, 3 ou 4", canvas.width / 2 - 90, canvas.height / 2 + 160);
+        }
+
+        // Função para iniciar o jogo
+        function startGame(mode) {
+            gameMode = mode;
+            playerLives = 3;
+            enemyHealth = 5;
+            bullets = [];
+            enemyBullets = [];
+            enemyShootCooldown = getEnemyShootCooldown();
+
+            // Criação do player
+            player = {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                width: 30,
+                height: 30,
+                color: "black",
+                speed: 5
+            };
+
+            // Criação do inimigo
+            enemy = {
+                x: canvas.width / 2 - 50,
+                y: 50,
+                width: 60,
+                height: 60,
+                color: "red"
+            };
+
+            // Limpeza de intervalos e inicia o jogo
+            clearInterval(gameInterval);
+            clearInterval(enemyShootInterval);
+            gameInterval = setInterval(updateGame, 1000 / 60);  // 60 FPS
+            enemyShootInterval = setInterval(shootEnemyBlocks, enemyShootCooldown);
+        }
+
+        // Função para atualizar o jogo
+        function updateGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Atualiza e desenha o player
+            if (player) {
+                movePlayer();
+                ctx.fillStyle = player.color;
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+            }
+
+            // Atualiza e desenha o inimigo
+            if (enemy) {
+                ctx.fillStyle = enemy.color;
+                ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+            }
+
+            // Atualiza e desenha as balas do player
+            bullets.forEach((bullet, index) => {
+                ctx.fillStyle = "green";
+                ctx.fillRect(bullet.x, bullet.y, 5, 5);
+                bullet.y -= 5;
+
+                // Verifica colisão com o inimigo
+                if (bullet.x > enemy.x && bullet.x < enemy.x + enemy.width && bullet.y > enemy.y && bullet.y < enemy.y + enemy.height) {
+                    bullets.splice(index, 1); // Remove a bala
+                    enemyHealth--;
+                    if (enemyHealth <= 0) {
+                        enemy = null; // O inimigo é destruído
+                    }
+                }
+
+                // Remove balas fora da tela
+                if (bullet.y < 0) {
+                    bullets.splice(index, 1);
+                }
+            });
+
+            // Atualiza e desenha as balas do inimigo
+            enemyBullets.forEach((bullet, index) => {
+                ctx.fillStyle = "red";
+                ctx.fillRect(bullet.x, bullet.y, 10, 10);
+                bullet.x += bullet.vx;
+                bullet.y += bullet.vy;
+
+                // Verifica colisão com o player
+                if (bullet.x > player.x && bullet.x < player.x + player.width && bullet.y > player.y && bullet.y < player.y + player.height) {
+                    playerLives--;
+                    enemyBullets.splice(index, 1); // Remove a bala
+                    if (playerLives <= 0) {
+                        gameOver();
+                    }
+                }
+
+                // Remove balas fora da tela
+                if (bullet.x < 0 || bullet.x > canvas.width || bullet.y < 0 || bullet.y > canvas.height) {
+                    enemyBullets.splice(index, 1);
+                }
+            });
+
+            // Exibe informações do jogo
+            ctx.fillStyle = "black";
+            ctx.font = "20px Arial";
+            ctx.fillText("Vidas: " + playerLives, 20, 30);
+            ctx.fillText("Inimigo: " + enemyHealth + " / 5", 20, 60);
+        }
+
+        // Função de movimentação do player
+        function movePlayer() {
+            if (keys["ArrowUp"] && player.y > 0) player.y -= player.speed;
+            if (keys["ArrowDown"] && player.y + player.height < canvas.height) player.y += player.speed;
+            if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
+            if (keys["ArrowRight"] && player.x + player.width < canvas.width) player.x += player.speed;
+        }
+
+        // Função para disparar as balas do player
+        function shootPlayerBullet() {
+            if (bullets.length < 5) {
+                bullets.push({ x: player.x + player.width / 2 - 2.5, y: player.y, color: "green" });
+            }
+        }
+
+        // Função para disparar os blocos do inimigo
+        function shootEnemyBlocks() {
+            if (!enemy) return;
+
+            const directions = [
+                { vx: 1, vy: 0 }, { vx: -1, vy: 0 },
+                { vx: 0, vy: 1 }, { vx: 0, vy: -1 },
+                { vx: 1, vy: 1 }, { vx: -1, vy: -1 },
+                { vx: 1, vy: -1 }, { vx: -1, vy: 1 }
+            ];
+
+            directions.forEach(direction => {
+                enemyBullets.push({
+                    x: enemy.x + enemy.width / 2,
+                    y: enemy.y + enemy.height / 2,
+                    vx: direction.vx,
+                    vy: direction.vy
+                });
+            });
+        }
+
+        // Função para iniciar o jogo após a escolha do modo
+        document.addEventListener("keydown", function(event) {
+            keys[event.key] = true;
+
+            if (event.key === "1") {
+                startGame("easy");
+            } else if (event.key === "2") {
+                startGame("medium");
+            } else if (event.key === "3") {
+                startGame("hard");
+            } else if (event.key === "4") {
+                startGame("impossible");
+            }
+
+            if (event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                event.preventDefault();
+            }
+
+            if (event.key === " ") {
+                shootPlayerBullet();
+            }
+        });
+
+        // Função para parar o movimento do player
+        document.addEventListener("keyup", function(event) {
+            keys[event.key] = false;
+        });
+
+        // Função para obter o cooldown do disparo do inimigo
+        function getEnemyShootCooldown() {
+            switch (gameMode) {
+                case "easy": return 1000; // 1 segundo
+                case "medium": return 1000; // 1 segundo
+                case "hard": return 1000; // 1 segundo
+                case "impossible": return 500; // 0.5 segundos
+            }
+        }
+
+        // Função de game over
+        function gameOver() {
+            clearInterval(gameInterval);
+            clearInterval(enemyShootInterval);
+            ctx.fillStyle = "black";
+            ctx.font = "50px Arial";
+            ctx.fillText("Game Over", canvas.width / 2 - 120, canvas.height / 2);
+            ctx.font = "30px Arial";
+            ctx.fillText("Pressione R para reiniciar", canvas.width / 2 - 140, canvas.height / 2 + 40);
+        }
+
+        // Reiniciar o jogo
+        document.addEventListener("keydown", function(event) {
+            if (event.key === "r") {
+                showMenu();
+            }
+        });
+
+        // Mostrar menu
+        showMenu();
+    </script>
+</body>
+</html>
